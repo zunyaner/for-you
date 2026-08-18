@@ -263,6 +263,53 @@
   .replay:active{ transform:scale(.95); }
   #fx{ position:absolute; inset:0; z-index:15; pointer-events:none; }
 
+  /* Scene: PR 合并 */
+  .pr-card{
+    width:100%; margin-top:16px; padding:22px 20px; border-radius:16px; text-align:left;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(14px);
+  }
+  .pr-title{ color:#f2f3f7; font-size:17px; font-weight:700; line-height:1.5; }
+  .pr-branch{ margin-top:12px; font-family:var(--mono); font-size:12px; color:rgba(255,255,255,.7); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .branch{ padding:3px 10px; border-radius:99px; font-family:var(--mono); font-size:11.5px; }
+  .branch.from{ background:rgba(139,92,246,.25); border:1px solid rgba(139,92,246,.5); color:#c4b5fd; }
+  .branch.to{ background:rgba(255,77,141,.22); border:1px solid rgba(255,77,141,.5); color:#ffb1cd; }
+  .pr-desc{ margin-top:14px; font-family:var(--mono); font-size:12px; line-height:1.9; color:rgba(255,255,255,.55); }
+  .merge-btn{
+    margin-top:18px; min-height:48px; padding:12px 30px; border-radius:10px; font-size:15px; font-weight:700;
+    background:linear-gradient(135deg,#ff4d8d,#8b5cf6); color:#fff; border:none; cursor:pointer;
+  }
+  .merge-btn:disabled{ opacity:.9; cursor:default; }
+  .merge-btn:active{ transform:scale(.96); }
+
+  /* Scene: 翻牌 */
+  .flip-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:18px; }
+  .flip-card{ aspect-ratio:3/3.6; perspective:800px; cursor:pointer; }
+  .flip-inner{ position:relative; width:100%; height:100%; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.2,.8,.2,1); }
+  .flip-card.flipped .flip-inner{ transform:rotateY(180deg); }
+  .flip-face{
+    position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden;
+    border-radius:14px; display:flex; align-items:center; justify-content:center; padding:10px;
+  }
+  .flip-front{ background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); color:rgba(255,255,255,.5); font-family:var(--mono); font-size:13px; }
+  .flip-back{
+    transform:rotateY(180deg); background:linear-gradient(135deg,rgba(255,77,141,.3),rgba(139,92,246,.3));
+    border:1px solid rgba(255,77,141,.45); color:#ffe3ee; font-size:12.5px; line-height:1.55; text-align:center;
+  }
+
+  /* Scene: 流星 */
+  .wish-sky{ position:relative; width:100%; height:min(46vh,340px); margin-top:14px; border-radius:18px; border:1px dashed rgba(255,255,255,.18); overflow:hidden; }
+  .wish-count{ font-family:var(--mono); font-size:13px; color:rgba(255,255,255,.65); margin-top:14px; letter-spacing:.2em; }
+  .meteor{
+    position:absolute; width:110px; height:2px; border-radius:2px; pointer-events:none;
+    background:linear-gradient(90deg,transparent,#fff);
+    filter:drop-shadow(0 0 6px rgba(255,255,255,.9));
+    animation:shoot .8s ease-out forwards;
+  }
+  @keyframes shoot{
+    from{ opacity:1; transform:rotate(-28deg) translateX(0); }
+    to{ opacity:0; transform:rotate(-28deg) translateX(260px); }
+  }
+
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
   }
@@ -350,6 +397,17 @@ var CONFIG = {
   ],
   // 第七幕：灵魂拷问
   choiceQ: "你想我了吗？",
+  // 翻牌：喜欢你的理由，换成你自己的话（建议 3 的倍数张）
+  reasons: [
+    "你笑起来的时候，眼睛会先笑",
+    "认真的样子，越看越可爱",
+    "能聊废话，也能聊未来",
+    "你记得我随口说的小事",
+    "不怕距离远，只怕不是你",
+    "你站在那里，我就很高兴"
+  ],
+  // 流星：放满 7 颗之后的那句话
+  wishFinal: "七个愿望都收到了。<br>第一个已经实现：<b>遇见你</b>。",
   // 第八幕：歌词卡（节选自《把银河调成静音》）
   lyricTitle: "《把银河调成静音》",
   lyricLines: [
@@ -504,7 +562,7 @@ var CONFIG = {
   } catch(e){}
 
   /* ---------- 真相页 ---------- */
-  var TOTAL = 9;
+  var TOTAL = 12;
   function startReveal(){
     if (started) return;
     started = true;
@@ -549,7 +607,7 @@ var CONFIG = {
     tapHint.style.display = "none";
     stage.innerHTML = "";
     try {
-      [sceneTerminal, sceneChat, sceneHold, sceneStarMap, sceneDist, sceneTimeline, sceneChoice, sceneLyric, sceneFinal][n]();
+      [sceneTerminal, sceneChat, sceneHold, sceneStarMap, sceneDist, sceneTimeline, scenePR, sceneChoice, sceneFlip, sceneLyric, sceneWish, sceneFinal][n]();
     } catch(e){ // 任何一幕出错都保证能继续
       sceneReady = true;
       tapHint.style.display = "block";
@@ -889,6 +947,115 @@ var CONFIG = {
       document.getElementById("choiceCap").innerHTML = "嘴硬无效：系统检测到心跳加速，<br>已自动为你勾选「想了」";
       later(next, 1500);
     });
+  }
+
+  /* ---- Scene: PR 合并请求 ---- */
+  var prDone = false;
+  function scenePR(){
+    prDone = false;
+    var sc = document.createElement("div");
+    sc.className = "scene";
+    sc.innerHTML =
+      '<span class="eyebrow">PULL REQUEST · #520</span>' +
+      '<div class="pr-card">' +
+        '<div class="pr-title">请求将「我的未来」合并进「你的未来」</div>' +
+        '<div class="pr-branch"><span class="branch from">my-future</span> → <span class="branch to">your-future</span></div>' +
+        '<div class="pr-desc">变更内容：+1 个爱你的人<br>+ 无数个平凡日子 · 冲突：0<br>备注：合并后不支持 revert</div>' +
+        '<button class="merge-btn no-advance" id="btnMerge">✓ 合并</button>' +
+      '</div>' +
+      '<div class="scene-caption" id="prCap"></div>';
+    stage.appendChild(sc);
+    sc.querySelector("#btnMerge").addEventListener("pointerdown", function(ev){
+      ev.stopPropagation();
+      if (prDone) return;
+      prDone = true;
+      var btn = ev.currentTarget;
+      btn.textContent = "合并中…";
+      later(function(){
+        btn.textContent = "✓ 已合并";
+        btn.disabled = true;
+        btn.classList.remove("no-advance");
+        var cap = document.getElementById("prCap");
+        if (cap) cap.innerHTML = "合并成功。<br>以后的每一次 commit，都一起写。";
+        vib(60);
+        later(next, 1300);
+      }, 900);
+    });
+  }
+
+  /* ---- Scene: 翻牌 · 喜欢你的理由 ---- */
+  var flipState = null;
+  function sceneFlip(){
+    var list = CONFIG.reasons.slice();
+    flipState = { count: 0, total: list.length };
+    var sc = document.createElement("div");
+    sc.className = "scene";
+    var cards = "";
+    list.forEach(function(r, i){
+      cards += '<div class="flip-card no-advance" data-i="' + i + '"><div class="flip-inner">' +
+        '<div class="flip-face flip-front">NO.' + (i + 1) + '</div>' +
+        '<div class="flip-face flip-back">' + r + '</div>' +
+      '</div></div>';
+    });
+    sc.innerHTML =
+      '<span class="eyebrow">' + list.length + ' REASONS · 喜欢你的理由</span>' +
+      '<div class="flip-grid">' + cards + '</div>' +
+      '<div class="scene-caption" id="flipCap">一张一张翻，不许跳过</div>';
+    stage.appendChild(sc);
+    sc.querySelectorAll(".flip-card").forEach(function(c){
+      c.addEventListener("pointerdown", function(ev){
+        if (c.classList.contains("flipped")) return; // 已翻开的牌不再拦截点击
+        ev.stopPropagation();
+        c.classList.add("flipped");
+        flipState.count++;
+        vib(20);
+        if (flipState.count >= flipState.total){
+          var cap = document.getElementById("flipCap");
+          if (cap) cap.innerHTML = "看完了？这还只是其中一部分。";
+          later(ready, 600);
+        }
+      });
+    });
+  }
+
+  /* ---- Scene: 流星许愿 ---- */
+  var wishState = null;
+  function sceneWish(){
+    wishState = { n: 0, need: 7 };
+    var sc = document.createElement("div");
+    sc.className = "scene";
+    sc.innerHTML =
+      '<span class="eyebrow">MAKE A WISH · 点一点夜空</span>' +
+      '<div class="wish-sky" id="wishSky"></div>' +
+      '<div class="wish-count" id="wishCount">0 / 7</div>' +
+      '<div class="scene-caption" id="wishCap">在夜空上点一下，放一颗流星，许一个愿</div>';
+    stage.appendChild(sc);
+    // 不 stopPropagation：许愿完成后，点击可交给全局路由继续前进
+    sc.querySelector("#wishSky").addEventListener("pointerdown", function(ev){
+      spawnMeteor(ev);
+      wishState.n++;
+      var countEl = document.getElementById("wishCount");
+      if (countEl) countEl.textContent = Math.min(wishState.n, wishState.need) + " / 7";
+      vib(15);
+      if (wishState.n === wishState.need){
+        var cap = document.getElementById("wishCap");
+        if (cap) cap.innerHTML = CONFIG.wishFinal;
+        later(ready, 800);
+      }
+    });
+  }
+  function spawnMeteor(ev){
+    var sky = document.getElementById("wishSky");
+    if (!sky) return;
+    var rect = sky.getBoundingClientRect();
+    var m = document.createElement("div");
+    m.className = "meteor";
+    var x = Math.max(0, Math.min(rect.width - 70, ev.clientX - rect.left - 55));
+    var y = Math.max(6, Math.min(rect.height - 8, ev.clientY - rect.top));
+    m.style.left = x + "px";
+    m.style.top = y + "px";
+    sky.appendChild(m);
+    setTimeout(function(){ if (m.parentNode) m.parentNode.removeChild(m); }, 900);
   }
 
   /* ---- Scene 8: 歌词玻璃卡 ---- */
